@@ -14708,10 +14708,10 @@ module.exports = function (config) {
   })
 
   return Q.all([
-    readFile(__nccwpck_require__.ab + "template1.hbs", 'utf-8'),
-    readFile(__nccwpck_require__.ab + "header1.hbs", 'utf-8'),
-    readFile(__nccwpck_require__.ab + "commit1.hbs", 'utf-8'),
-    readFile(__nccwpck_require__.ab + "footer.hbs", 'utf-8')
+    readFile(__nccwpck_require__.ab + "template2.hbs", 'utf-8'),
+    readFile(__nccwpck_require__.ab + "header2.hbs", 'utf-8'),
+    readFile(__nccwpck_require__.ab + "commit2.hbs", 'utf-8'),
+    readFile(__nccwpck_require__.ab + "footer1.hbs", 'utf-8')
   ])
     .spread((template, header, commit, footer) => {
       const writerOpts = getWriterOpts(config)
@@ -14930,10 +14930,10 @@ function conventionalChangelogWriterInit (context, options) {
     includeDetails: false,
     ignoreReverted: true,
     doFlush: true,
-    mainTemplate: readFileSync(__nccwpck_require__.ab + "template2.hbs", 'utf-8'),
-    headerPartial: readFileSync(__nccwpck_require__.ab + "header2.hbs", 'utf-8'),
-    commitPartial: readFileSync(__nccwpck_require__.ab + "commit2.hbs", 'utf-8'),
-    footerPartial: readFileSync(__nccwpck_require__.ab + "footer1.hbs", 'utf-8')
+    mainTemplate: readFileSync(__nccwpck_require__.ab + "template1.hbs", 'utf-8'),
+    headerPartial: readFileSync(__nccwpck_require__.ab + "header1.hbs", 'utf-8'),
+    commitPartial: readFileSync(__nccwpck_require__.ab + "commit1.hbs", 'utf-8'),
+    footerPartial: readFileSync(__nccwpck_require__.ab + "footer.hbs", 'utf-8')
   }, options)
 
   if ((!_.isFunction(options.transform) && _.isObject(options.transform)) || _.isUndefined(options.transform)) {
@@ -62879,11 +62879,20 @@ const package_1 = __nccwpck_require__(48628);
 const package_graph_1 = __nccwpck_require__(69522);
 const run_topologically_1 = __nccwpck_require__(2130);
 const plugin_1 = __nccwpck_require__(33574);
-const package_json_stringify_1 = __nccwpck_require__(85695);
+const json_stringify_1 = __nccwpck_require__(69227);
 const checkpoint_1 = __nccwpck_require__(25279);
 const constants_1 = __nccwpck_require__(52661);
 const conventional_commits_1 = __nccwpck_require__(34771);
 const changelog_1 = __nccwpck_require__(3325);
+class Package extends package_1.Package {
+    constructor(rawContent, location, pkg) {
+        super(pkg !== null && pkg !== void 0 ? pkg : JSON.parse(rawContent), location);
+        this.rawContent = rawContent;
+    }
+    clone() {
+        return new Package(this.rawContent, this.location, this.toJSON());
+    }
+}
 class NodeWorkspaceDependencyUpdates extends plugin_1.ManifestPlugin {
     // package.json contents already updated by the node releasers.
     filterPackages(pkgsWithPRData) {
@@ -62893,7 +62902,7 @@ class NodeWorkspaceDependencyUpdates extends plugin_1.ManifestPlugin {
                 for (const [path, fileData] of pkg.prData.changes) {
                     if (path === `${pkg.config.path}/package.json`) {
                         this.log(`found ${path} in changes`, checkpoint_1.CheckpointType.Success);
-                        pathPkgs.set(path, JSON.parse(fileData.content));
+                        pathPkgs.set(path, fileData.content);
                     }
                 }
             }
@@ -62915,20 +62924,20 @@ class NodeWorkspaceDependencyUpdates extends plugin_1.ManifestPlugin {
                 contents = alreadyUpdated;
             }
             else {
-                const fileContents = await this.gh.getFileContents(path);
-                contents = JSON.parse(fileContents.parsedContent);
+                const { parsedContent } = await this.gh.getFileContents(path);
+                contents = parsedContent;
             }
             this.log(`loaded ${path} from ${alreadyUpdated ? 'existing changes' : 'github'}`, checkpoint_1.CheckpointType.Success);
-            nodePkgs.set(path, new package_1.Package(contents, path));
+            nodePkgs.set(path, new Package(contents, path));
         }
         return nodePkgs;
     }
     async runLernaVersion(rpUpdatedPkgs, allPkgs) {
         // Build the graph of all the packages: similar to https://git.io/Jqf1v
         const packageGraph = new package_graph_1.PackageGraph(
-        // use pkg.toJSON() which does a shallow copy of the internal data storage
+        // use pkg.clone() which does a shallow copy of the internal data storage
         // so we can preserve the original allPkgs for version diffing later.
-        [...allPkgs].map(([path, pkg]) => new package_1.Package(pkg.toJSON(), path)), 'allDependencies');
+        [...allPkgs.values()].map(pkg => pkg.clone()), 'allDependencies');
         // release-please already did the work of @lerna/collectUpdates (identifying
         // which packages need version bumps based on conventional commits). We use
         // that as our `isCandidate` callback in @lerna/collectUpdates.collectPackages.
@@ -63008,11 +63017,11 @@ class NodeWorkspaceDependencyUpdates extends plugin_1.ManifestPlugin {
             return pkg;
         };
         // https://git.io/Jqfyp
-        const allUpdated = await run_topologically_1.runTopologically(updatesWithDependents.map(node => node.pkg), runner, {
+        const allUpdated = (await run_topologically_1.runTopologically(updatesWithDependents.map(node => node.pkg), runner, {
             graphType: 'allDependencies',
             concurrency: 1,
             rejectCycles: false,
-        });
+        }));
         return new Map(allUpdated.map(p => [p.location, p]));
     }
     async updatePkgsWithPRData(pkgsWithPRData, newManifestVersions, allUpdated, allOrigPkgs) {
@@ -63025,10 +63034,10 @@ class NodeWorkspaceDependencyUpdates extends plugin_1.ManifestPlugin {
             const filePath = `${data.config.path}/package.json`;
             const updated = allUpdated.get(filePath); // bug if not defined
             data.prData.changes.set(filePath, {
-                content: package_json_stringify_1.packageJsonStringify(updated.toJSON()),
+                content: json_stringify_1.jsonStringify(updated.toJSON(), updated.rawContent),
                 mode: '100644',
             });
-            await this.setChangelogEntry(data.config, data.prData.changes, updated, allOrigPkgs.get(filePath) // bug if undefined.
+            await this.setChangelogEntry(data.config, data.prData.changes, updated, allOrigPkgs.get(filePath).toJSON() // bug if undefined.
             );
             allUpdated.delete(filePath);
         }
@@ -63037,7 +63046,7 @@ class NodeWorkspaceDependencyUpdates extends plugin_1.ManifestPlugin {
         for (const [filePath, updated] of allUpdated) {
             const pkg = this.config.parsedPackages.find(p => `${p.path}/package.json` === filePath); // bug if undefined.
             pkg.packageName = updated.name;
-            const content = package_json_stringify_1.packageJsonStringify(updated.toJSON());
+            const content = json_stringify_1.jsonStringify(updated.toJSON(), updated.rawContent);
             const changes = new Map([[filePath, { content, mode: '100644' }]]);
             await this.setChangelogEntry(pkg, changes, updated, allOrigPkgs.get(filePath) // bug if undefined.
             );
@@ -63964,6 +63973,155 @@ exports.Helm = Helm;
 
 /***/ }),
 
+/***/ 45516:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.HPackYoshi = void 0;
+const fs_1 = __nccwpck_require__(35747);
+const path_1 = __nccwpck_require__(85622);
+const release_pr_1 = __nccwpck_require__(86786);
+const conventional_commits_1 = __nccwpck_require__(34771);
+const indent_commit_1 = __nccwpck_require__(13170);
+const changelog_1 = __nccwpck_require__(3325);
+const version_hpack_1 = __nccwpck_require__(59567);
+const logger_1 = __nccwpck_require__(68809);
+const CHANGELOG_SECTIONS = [
+    { type: 'feat', section: 'Features' },
+    { type: 'fix', section: 'Bug Fixes' },
+    { type: 'perf', section: 'Performance Improvements' },
+    { type: 'revert', section: 'Reverts' },
+    { type: 'docs', section: 'Documentation' },
+    { type: 'style', section: 'Styles', hidden: true },
+    { type: 'chore', section: 'Miscellaneous Chores', hidden: true },
+    { type: 'refactor', section: 'Code Refactoring', hidden: true },
+    { type: 'test', section: 'Tests', hidden: true },
+    { type: 'build', section: 'Build System', hidden: true },
+    { type: 'ci', section: 'Continuous Integration', hidden: true },
+];
+class HPackYoshi extends release_pr_1.ReleasePR {
+    async _run() {
+        const packageName = await this.getPackageName();
+        const lastReleaseSha = this.lastPackageVersion
+            ? await this.gh.getTagSha(`${packageName.getComponent()}/v${this.lastPackageVersion}`)
+            : undefined;
+        const commits = await this.commits({
+            sha: lastReleaseSha,
+            path: packageName.name,
+        });
+        if (commits.length === 0) {
+            logger_1.logger.warn(`no commits found since ${lastReleaseSha}`);
+            return undefined;
+        }
+        else {
+            const cc = new conventional_commits_1.ConventionalCommits({
+                commits: postProcessCommits(commits),
+                owner: this.gh.owner,
+                repository: this.gh.repo,
+                bumpMinorPreMajor: this.bumpMinorPreMajor,
+                commitPartial: fs_1.readFileSync(__nccwpck_require__.ab + "commit.hbs", 'utf8'),
+                headerPartial: fs_1.readFileSync(__nccwpck_require__.ab + "header.hbs", 'utf8'),
+                mainTemplate: fs_1.readFileSync(__nccwpck_require__.ab + "template.hbs", 'utf8'),
+                changelogSections: CHANGELOG_SECTIONS,
+            });
+            const githubTag = this.lastPackageVersion
+                ? {
+                    version: this.lastPackageVersion,
+                    name: this.lastPackageVersion,
+                }
+                : undefined;
+            const candidate = await this.coerceReleaseCandidate(cc, githubTag);
+            const changelogEntry = await cc.generateChangelogEntry({
+                version: candidate.version,
+                currentTag: `v${candidate.version}`,
+                previousTag: undefined,
+            });
+            // don't create a release candidate until user facing changes
+            // (fix, feat, BREAKING CHANGE) have been made; a CHANGELOG that's
+            // one line is a good indicator that there were no interesting commits.
+            if (this.changelogEmpty(changelogEntry)) {
+                logger_1.logger.warn(`no user facing commits found since ${lastReleaseSha ? lastReleaseSha : 'beginning of time'}`);
+                return undefined;
+            }
+            const updates = [];
+            updates.push(new changelog_1.Changelog({
+                path: `${packageName.name}/CHANGELOG.md`,
+                changelogEntry,
+                version: candidate.version,
+                packageName: packageName.name,
+            }));
+            updates.push(new version_hpack_1.VersionHPack({
+                path: `${packageName.name}/package.yaml`,
+                changelogEntry,
+                version: candidate.version,
+                packageName: packageName.name,
+            }));
+            return await this.openPR({
+                sha: commits[0].sha,
+                changelogEntry: `${changelogEntry}\n---\n${this.summarizeCommits(lastReleaseSha, commits, packageName.name)}\n`,
+                updates,
+                version: candidate.version,
+                includePackageName: true,
+            });
+        }
+    }
+    // create a summary of the commits landed since the last release,
+    // for the benefit of the release PR.
+    summarizeCommits(lastReleaseSha, commits, packageName) {
+        // summarize the commits that landed:
+        let summary = '### Commits since last release:\n\n';
+        const updatedFiles = {};
+        const repoUrl = `${this.gh.owner}/${this.gh.repo}`;
+        commits.forEach(commit => {
+            if (commit.sha === null)
+                return;
+            const splitMessage = commit.message.split('\n');
+            summary += `* [${splitMessage[0]}](https://github.com/${repoUrl}/commit/${commit.sha})\n`;
+            if (splitMessage.length > 2) {
+                summary = `${summary}<pre><code>${splitMessage
+                    .slice(1)
+                    .join('\n')}</code></pre>\n`;
+            }
+            commit.files.forEach(file => {
+                if (file.startsWith(packageName)) {
+                    updatedFiles[file] = true;
+                }
+            });
+        });
+        // summarize the files that changed:
+        summary = `${summary}\n### Files edited since last release:\n\n<pre><code>`;
+        Object.keys(updatedFiles).forEach(file => {
+            summary += `${file}\n`;
+        });
+        return `${summary}</code></pre>\n[Compare Changes](https://github.com/${repoUrl}/compare/${lastReleaseSha}...HEAD)\n`;
+    }
+}
+exports.HPackYoshi = HPackYoshi;
+function postProcessCommits(commits) {
+    commits.forEach(commit => {
+        commit.message = indent_commit_1.indentCommit(commit);
+    });
+    return commits;
+}
+//# sourceMappingURL=hpack-yoshi.js.map
+
+/***/ }),
+
 /***/ 14606:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
@@ -63991,6 +64149,7 @@ const java_lts_1 = __nccwpck_require__(79096);
 const java_yoshi_1 = __nccwpck_require__(42334);
 const krm_blueprint_1 = __nccwpck_require__(2119);
 const node_1 = __nccwpck_require__(94564);
+const php_1 = __nccwpck_require__(26756);
 const php_yoshi_1 = __nccwpck_require__(7492);
 const python_1 = __nccwpck_require__(17508);
 const ruby_yoshi_1 = __nccwpck_require__(66486);
@@ -64000,6 +64159,7 @@ const terraform_module_1 = __nccwpck_require__(72375);
 const rust_1 = __nccwpck_require__(18109);
 const ocaml_1 = __nccwpck_require__(26571);
 const helm_1 = __nccwpck_require__(42474);
+const hpack_yoshi_1 = __nccwpck_require__(45516);
 const releasers = {
     go: go_1.Go,
     'go-yoshi': go_yoshi_1.GoYoshi,
@@ -64009,6 +64169,7 @@ const releasers = {
     'krm-blueprint': krm_blueprint_1.KRMBlueprint,
     node: node_1.Node,
     ocaml: ocaml_1.OCaml,
+    php: php_1.PHP,
     'php-yoshi': php_yoshi_1.PHPYoshi,
     python: python_1.Python,
     ruby: ruby_1.Ruby,
@@ -64017,6 +64178,7 @@ const releasers = {
     simple: simple_1.Simple,
     'terraform-module': terraform_module_1.TerraformModule,
     helm: helm_1.Helm,
+    'hpack-yoshi': hpack_yoshi_1.HPackYoshi
 };
 function getReleasers() {
     return releasers;
@@ -64740,10 +64902,12 @@ class KRMBlueprint extends release_pr_1.ReleasePR {
         }));
         const versionsMap = new Map();
         if (candidate.previousTag) {
-            versionsMap.set('previous', candidate.previousTag);
+            // if previousTag of form pkgName-vX.x.x, we only require vX.x.x for attrib update
+            const previousVersion = candidate.previousTag.replace(`${packageName.name}-`, '');
+            versionsMap.set('previousVersion', previousVersion);
         }
         // Update version in all yaml files with attribution annotation
-        const yamlPaths = await this.gh.findFilesByExtension('yaml');
+        const yamlPaths = await this.gh.findFilesByExtension('yaml', this.path);
         for (const yamlPath of yamlPaths) {
             const contents = await this.gh.getFileContents(this.addPath(yamlPath));
             if (hasKRMBlueprintAttrib(contents.parsedContent)) {
@@ -64963,9 +65127,9 @@ const changelog_1 = __nccwpck_require__(3325);
 // Yoshi PHP Monorepo
 const php_client_version_1 = __nccwpck_require__(78124);
 const php_manifest_1 = __nccwpck_require__(87539);
-const root_composer_1 = __nccwpck_require__(82211);
 const version_1 = __nccwpck_require__(9892);
 const logger_1 = __nccwpck_require__(68809);
+const root_composer_update_packages_1 = __nccwpck_require__(20595);
 const CHANGELOG_SECTIONS = [
     { type: 'feat', section: 'Features' },
     { type: 'fix', section: 'Bug Fixes' },
@@ -65005,7 +65169,7 @@ class PHPYoshi extends release_pr_1.ReleasePR {
         const packageName = await this.getPackageName();
         // update the aggregate package information in the root
         // composer.json and manifest.json.
-        updates.push(new root_composer_1.RootComposer({
+        updates.push(new root_composer_update_packages_1.RootComposerUpdatePackages({
             path: 'composer.json',
             changelogEntry,
             version: candidate.version,
@@ -65129,6 +65293,79 @@ ${entryUpdate}
 </details>`;
 }
 //# sourceMappingURL=php-yoshi.js.map
+
+/***/ }),
+
+/***/ 26756:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+// Copyright 2021 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PHP = void 0;
+const release_pr_1 = __nccwpck_require__(86786);
+// Generic
+const changelog_1 = __nccwpck_require__(3325);
+// PHP Specific.
+const root_composer_update_package_1 = __nccwpck_require__(50536);
+const CHANGELOG_SECTIONS = [
+    { type: 'feat', section: 'Features' },
+    { type: 'fix', section: 'Bug Fixes' },
+    { type: 'perf', section: 'Performance Improvements' },
+    { type: 'revert', section: 'Reverts' },
+    { type: 'chore', section: 'Miscellaneous Chores' },
+    { type: 'docs', section: 'Documentation', hidden: true },
+    { type: 'style', section: 'Styles', hidden: true },
+    { type: 'refactor', section: 'Code Refactoring', hidden: true },
+    { type: 'test', section: 'Tests', hidden: true },
+    { type: 'build', section: 'Build System', hidden: true },
+    { type: 'ci', section: 'Continuous Integration', hidden: true },
+];
+class PHP extends release_pr_1.ReleasePR {
+    constructor(options) {
+        var _a;
+        // eslint-disable-next-line @typescript-eslint/ban-ts-ignore
+        // @ts-ignore
+        super(options);
+        this.changelogSections = (_a = options.changelogSections) !== null && _a !== void 0 ? _a : CHANGELOG_SECTIONS;
+    }
+    async buildUpdates(changelogEntry, candidate, packageName) {
+        const updates = [];
+        const versions = new Map();
+        versions.set('version', candidate.version);
+        // update composer.json
+        updates.push(new root_composer_update_package_1.RootComposerUpdatePackage({
+            path: 'composer.json',
+            changelogEntry,
+            version: candidate.version,
+            versions: versions,
+            packageName: packageName.name,
+        }));
+        // update Changelog
+        updates.push(new changelog_1.Changelog({
+            path: this.changelogPath,
+            changelogEntry,
+            version: candidate.version,
+            packageName: packageName.name,
+        }));
+        return updates;
+    }
+}
+exports.PHP = PHP;
+//# sourceMappingURL=php.js.map
 
 /***/ }),
 
@@ -66141,8 +66378,8 @@ class KRMBlueprintVersion {
         // match starting cnrm/ ending with semver to prevent wrong updates like pinned config.kubernetes.io/function
         let matchRegex = '(cnrm/.*/)(v[0-9]+.[0-9]+.[0-9]+)+(-w+)?';
         // if explicit previous version, match only that version
-        if ((_a = this.versions) === null || _a === void 0 ? void 0 : _a.has('previous')) {
-            matchRegex = `(cnrm/.*/)(${this.versions.get('previous')})+(-w+)?`;
+        if ((_a = this.versions) === null || _a === void 0 ? void 0 : _a.has('previousVersion')) {
+            matchRegex = `(cnrm/.*/)(${this.versions.get('previousVersion')})+(-w+)?`;
         }
         const oldVersion = content.match(new RegExp(matchRegex));
         if (oldVersion) {
@@ -66220,6 +66457,7 @@ exports.DuneProject = DuneProject;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.EsyJson = void 0;
 const logger_1 = __nccwpck_require__(68809);
+const json_stringify_1 = __nccwpck_require__(69227);
 class EsyJson {
     constructor(options) {
         this.create = false;
@@ -66232,7 +66470,7 @@ class EsyJson {
         const parsed = JSON.parse(content);
         logger_1.logger.info(`updating ${this.path} from ${parsed.version} to ${this.version}`);
         parsed.version = this.version;
-        return JSON.stringify(parsed, null, 2) + '\n';
+        return json_stringify_1.jsonStringify(parsed, content);
     }
 }
 exports.EsyJson = EsyJson;
@@ -66302,7 +66540,7 @@ exports.Opam = Opam;
 // limitations under the License.
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PackageJson = void 0;
-const package_json_stringify_1 = __nccwpck_require__(85695);
+const json_stringify_1 = __nccwpck_require__(69227);
 const logger_1 = __nccwpck_require__(68809);
 class PackageJson {
     constructor(options) {
@@ -66320,7 +66558,7 @@ class PackageJson {
         const parsed = JSON.parse(content);
         logger_1.logger.info(`updating ${this.path} from ${parsed.version} to ${this.version}`);
         this.updateVersion(parsed);
-        return package_json_stringify_1.packageJsonStringify(parsed);
+        return json_stringify_1.jsonStringify(parsed, content);
     }
 }
 exports.PackageJson = PackageJson;
@@ -66422,6 +66660,7 @@ exports.PHPClientVersion = PHPClientVersion;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PHPManifest = void 0;
 const logger_1 = __nccwpck_require__(68809);
+const json_stringify_1 = __nccwpck_require__(69227);
 class PHPManifest {
     constructor(options) {
         this.create = false;
@@ -66452,7 +66691,7 @@ class PHPManifest {
                 module.versions.unshift(`v${this.version}`);
             }
         });
-        return JSON.stringify(parsed, null, 4) + '\n';
+        return json_stringify_1.jsonStringify(parsed, content);
     }
 }
 exports.PHPManifest = PHPManifest;
@@ -66627,7 +66866,7 @@ exports.SetupPy = SetupPy;
 /***/ }),
 
 /***/ 9817:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
@@ -66646,6 +66885,7 @@ exports.SetupPy = SetupPy;
 // limitations under the License.
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ReleasePleaseManifest = void 0;
+const json_stringify_1 = __nccwpck_require__(69227);
 class ReleasePleaseManifest {
     constructor(options) {
         this.changelogEntry = '';
@@ -66661,7 +66901,7 @@ class ReleasePleaseManifest {
         for (const [path, version] of this.versions) {
             parsed[path] = version;
         }
-        return JSON.stringify(parsed, Object.keys(parsed).sort(), 2) + '\n';
+        return json_stringify_1.jsonStringify(parsed, content, Object.keys(parsed).sort());
     }
 }
 exports.ReleasePleaseManifest = ReleasePleaseManifest;
@@ -66669,7 +66909,59 @@ exports.ReleasePleaseManifest = ReleasePleaseManifest;
 
 /***/ }),
 
-/***/ 82211:
+/***/ 50536:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+// Copyright 2021 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.RootComposerUpdatePackage = void 0;
+const logger_1 = __nccwpck_require__(68809);
+class RootComposerUpdatePackage {
+    constructor(options) {
+        this.create = false;
+        this.path = options.path;
+        this.changelogEntry = options.changelogEntry;
+        this.version = options.version;
+        this.versions = options.versions;
+        this.packageName = options.packageName;
+    }
+    updateContent(content) {
+        if (!this.versions || this.versions.size === 0) {
+            logger_1.logger.info(`no updates necessary for ${this.path}`);
+            return content;
+        }
+        const parsed = JSON.parse(content);
+        if (this.versions) {
+            // eslint-disable-next-line prefer-const
+            for (let [key, version] of this.versions.entries()) {
+                version = version || '1.0.0';
+                logger_1.logger.info(`updating ${key} from ${parsed[key]} to ${version}`);
+                parsed[key] = version;
+            }
+        }
+        return JSON.stringify(parsed, null, 4) + '\n';
+    }
+}
+exports.RootComposerUpdatePackage = RootComposerUpdatePackage;
+//# sourceMappingURL=root-composer-update-package.js.map
+
+/***/ }),
+
+/***/ 20595:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -66688,9 +66980,10 @@ exports.ReleasePleaseManifest = ReleasePleaseManifest;
 // See the License for the specific language governing permissions and
 // limitations under the License.
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.RootComposer = void 0;
+exports.RootComposerUpdatePackages = void 0;
 const logger_1 = __nccwpck_require__(68809);
-class RootComposer {
+const json_stringify_1 = __nccwpck_require__(69227);
+class RootComposerUpdatePackages {
     constructor(options) {
         this.create = false;
         this.path = options.path;
@@ -66713,11 +67006,11 @@ class RootComposer {
                 parsed.replace[key] = version;
             }
         }
-        return JSON.stringify(parsed, null, 4) + '\n';
+        return json_stringify_1.jsonStringify(parsed, content);
     }
 }
-exports.RootComposer = RootComposer;
-//# sourceMappingURL=root-composer.js.map
+exports.RootComposerUpdatePackages = RootComposerUpdatePackages;
+//# sourceMappingURL=root-composer-update-packages.js.map
 
 /***/ }),
 
@@ -66957,6 +67250,7 @@ exports.parseCargoLockfile = parseCargoLockfile;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.SamplesPackageJson = void 0;
 const logger_1 = __nccwpck_require__(68809);
+const json_stringify_1 = __nccwpck_require__(69227);
 class SamplesPackageJson {
     constructor(options) {
         this.create = false;
@@ -66972,7 +67266,7 @@ class SamplesPackageJson {
         }
         logger_1.logger.info(`updating ${this.packageName} dependency in ${this.path} from ${parsed.dependencies[this.packageName]} to ^${this.version}`);
         parsed.dependencies[this.packageName] = `^${this.version}`;
-        return JSON.stringify(parsed, null, 2) + '\n';
+        return json_stringify_1.jsonStringify(parsed, content);
     }
 }
 exports.SamplesPackageJson = SamplesPackageJson;
@@ -67192,6 +67486,43 @@ exports.replaceTomlValue = replaceTomlValue;
 
 /***/ }),
 
+/***/ 59567:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+// Copyright 2019 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.VersionHPack = void 0;
+class VersionHPack {
+    constructor(options) {
+        this.create = false;
+        this.path = options.path;
+        this.changelogEntry = options.changelogEntry;
+        this.version = options.version;
+        this.packageName = options.packageName;
+    }
+    updateContent(content) {
+        return content.replace(/^version: (["'])[0-9]+\.[0-9]+\.[0-9](-\w+)?["']$/, `version: $1${this.version}$1`);
+    }
+}
+exports.VersionHPack = VersionHPack;
+//# sourceMappingURL=version-hpack.js.map
+
+/***/ }),
+
 /***/ 86044:
 /***/ ((__unused_webpack_module, exports) => {
 
@@ -67221,7 +67552,7 @@ class VersionRB {
         this.packageName = options.packageName;
     }
     updateContent(content) {
-        return content.replace(/"[0-9]+\.[0-9]+\.[0-9](-\w+)?"/, `"${this.version}"`);
+        return content.replace(/(["'])[0-9]+\.[0-9]+\.[0-9](-\w+)?["']/, `$1${this.version}$1`);
     }
 }
 exports.VersionRB = VersionRB;
@@ -67514,6 +67845,35 @@ exports.indentCommit = indentCommit;
 
 /***/ }),
 
+/***/ 69227:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+// Copyright 2021 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.jsonStringify = void 0;
+const detectIndent = __nccwpck_require__(68802);
+function jsonStringify(parsed, content, replacer) {
+    return `${content.slice(0, content.indexOf('{'))}${JSON.stringify(parsed, replacer, detectIndent(content.trim()).indent)}${content.slice(content.lastIndexOf('}') + 1)}`;
+}
+exports.jsonStringify = jsonStringify;
+//# sourceMappingURL=json-stringify.js.map
+
+/***/ }),
+
 /***/ 68809:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
@@ -67567,34 +67927,6 @@ function setLogger(userLogger) {
 }
 exports.setLogger = setLogger;
 //# sourceMappingURL=logger.js.map
-
-/***/ }),
-
-/***/ 85695:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-// Copyright 2021 Google LLC
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.packageJsonStringify = void 0;
-function packageJsonStringify(parsed) {
-    return JSON.stringify(parsed, null, 2) + '\n';
-}
-exports.packageJsonStringify = packageJsonStringify;
-//# sourceMappingURL=package-json-stringify.js.map
 
 /***/ }),
 
@@ -67970,6 +68302,174 @@ function toConventionalChangelogFormat(ast) {
 }
 exports.default = toConventionalChangelogFormat;
 //# sourceMappingURL=to-conventional-changelog-format.js.map
+
+/***/ }),
+
+/***/ 68802:
+/***/ ((module) => {
+
+"use strict";
+
+
+// Detect either spaces or tabs but not both to properly handle tabs for indentation and spaces for alignment
+const INDENT_REGEX = /^(?:( )+|\t+)/;
+
+const INDENT_TYPE_SPACE = 'space';
+const INDENT_TYPE_TAB = 'tab';
+
+// Make a Map that counts how many indents/unindents have occurred for a given size and how many lines follow a given indentation.
+// The key is a concatenation of the indentation type (s = space and t = tab) and the size of the indents/unindents.
+//
+// indents = {
+//    t3: [1, 0],
+//    t4: [1, 5],
+//    s5: [1, 0],
+//   s12: [1, 0],
+// }
+function makeIndentsMap(string, ignoreSingleSpaces) {
+	const indents = new Map();
+
+	// Remember the size of previous line's indentation
+	let previousSize = 0;
+	let previousIndentType;
+
+	// Indents key (ident type + size of the indents/unindents)
+	let key;
+
+	for (const line of string.split(/\n/g)) {
+		if (!line) {
+			// Ignore empty lines
+			continue;
+		}
+
+		let indent;
+		let indentType;
+		let weight;
+		let entry;
+		const matches = line.match(INDENT_REGEX);
+
+		if (matches === null) {
+			previousSize = 0;
+			previousIndentType = '';
+		} else {
+			indent = matches[0].length;
+
+			if (matches[1]) {
+				indentType = INDENT_TYPE_SPACE;
+			} else {
+				indentType = INDENT_TYPE_TAB;
+			}
+
+			// Ignore single space unless it's the only indent detected to prevent common false positives
+			if (ignoreSingleSpaces && indentType === INDENT_TYPE_SPACE && indent === 1) {
+				continue;
+			}
+
+			if (indentType !== previousIndentType) {
+				previousSize = 0;
+			}
+
+			previousIndentType = indentType;
+
+			weight = 0;
+
+			const indentDifference = indent - previousSize;
+			previousSize = indent;
+
+			// Previous line have same indent?
+			if (indentDifference === 0) {
+				weight++;
+				// We use the key from previous loop
+			} else {
+				const absoluteIndentDifference = indentDifference > 0 ? indentDifference : -indentDifference;
+				key = encodeIndentsKey(indentType, absoluteIndentDifference);
+			}
+
+			// Update the stats
+			entry = indents.get(key);
+
+			if (entry === undefined) {
+				entry = [1, 0]; // Init
+			} else {
+				entry = [++entry[0], entry[1] + weight];
+			}
+
+			indents.set(key, entry);
+		}
+	}
+
+	return indents;
+}
+
+// Encode the indent type and amount as a string (e.g. 's4') for use as a compound key in the indents Map.
+function encodeIndentsKey(indentType, indentAmount) {
+	const typeCharacter = indentType === INDENT_TYPE_SPACE ? 's' : 't';
+	return typeCharacter + String(indentAmount);
+}
+
+// Extract the indent type and amount from a key of the indents Map.
+function decodeIndentsKey(indentsKey) {
+	const keyHasTypeSpace = indentsKey[0] === 's';
+	const type = keyHasTypeSpace ? INDENT_TYPE_SPACE : INDENT_TYPE_TAB;
+
+	const amount = Number(indentsKey.slice(1));
+
+	return {type, amount};
+}
+
+// Return the key (e.g. 's4') from the indents Map that represents the most common indent,
+// or return undefined if there are no indents.
+function getMostUsedKey(indents) {
+	let result;
+	let maxUsed = 0;
+	let maxWeight = 0;
+
+	for (const [key, [usedCount, weight]] of indents) {
+		if (usedCount > maxUsed || (usedCount === maxUsed && weight > maxWeight)) {
+			maxUsed = usedCount;
+			maxWeight = weight;
+			result = key;
+		}
+	}
+
+	return result;
+}
+
+function makeIndentString(type, amount) {
+	const indentCharacter = type === INDENT_TYPE_SPACE ? ' ' : '\t';
+	return indentCharacter.repeat(amount);
+}
+
+module.exports = string => {
+	if (typeof string !== 'string') {
+		throw new TypeError('Expected a string');
+	}
+
+	// Identify indents while skipping single space indents to avoid common edge cases (e.g. code comments)
+	// If no indents are identified, run again and include all indents for comprehensive detection
+	let indents = makeIndentsMap(string, true);
+	if (indents.size === 0) {
+		indents = makeIndentsMap(string, false);
+	}
+
+	const keyOfMostUsedIndent = getMostUsedKey(indents);
+
+	let type;
+	let amount = 0;
+	let indent = '';
+
+	if (keyOfMostUsedIndent !== undefined) {
+		({type, amount} = decodeIndentsKey(keyOfMostUsedIndent));
+		indent = makeIndentString(type, amount);
+	}
+
+	return {
+		amount,
+		type,
+		indent
+	};
+};
+
 
 /***/ }),
 
@@ -85757,7 +86257,7 @@ module.exports = JSON.parse("[\"assert\",\"buffer\",\"child_process\",\"cluster\
 /***/ ((module) => {
 
 "use strict";
-module.exports = {"i8":"11.20.2"};
+module.exports = {"i8":"11.21.0"};
 
 /***/ }),
 
@@ -85765,7 +86265,7 @@ module.exports = {"i8":"11.20.2"};
 /***/ ((module) => {
 
 "use strict";
-module.exports = JSON.parse("{\"name\":\"strong-log-transformer\",\"version\":\"2.1.0\",\"description\":\"Stream transformer that prefixes lines with timestamps and other things.\",\"author\":\"Ryan Graham <ryan@strongloop.com>\",\"license\":\"Apache-2.0\",\"repository\":{\"type\":\"git\",\"url\":\"git://github.com/strongloop/strong-log-transformer\"},\"keywords\":[\"logging\",\"streams\"],\"bugs\":{\"url\":\"https://github.com/strongloop/strong-log-transformer/issues\"},\"homepage\":\"https://github.com/strongloop/strong-log-transformer\",\"directories\":{\"test\":\"test\"},\"bin\":{\"sl-log-transformer\":\"bin/sl-log-transformer.js\"},\"main\":\"index.js\",\"scripts\":{\"test\":\"tap --100 test/test-*\"},\"dependencies\":{\"duplexer\":\"^0.1.1\",\"minimist\":\"^1.2.0\",\"through\":\"^2.3.4\"},\"devDependencies\":{\"tap\":\"^12.0.1\"},\"engines\":{\"node\":\">=4\"},\"_resolved\":\"https://registry.npmjs.org/strong-log-transformer/-/strong-log-transformer-2.1.0.tgz\",\"_integrity\":\"sha512-B3Hgul+z0L9a236FAUC9iZsL+nVHgoCJnqCbN588DjYxvGXaXaaFbfmQ/JhvKjZwsOukuR72XbHv71Qkug0HxA==\",\"_from\":\"strong-log-transformer@2.1.0\"}");
+module.exports = JSON.parse("{\"name\":\"strong-log-transformer\",\"version\":\"2.1.0\",\"description\":\"Stream transformer that prefixes lines with timestamps and other things.\",\"author\":\"Ryan Graham <ryan@strongloop.com>\",\"license\":\"Apache-2.0\",\"repository\":{\"type\":\"git\",\"url\":\"git://github.com/strongloop/strong-log-transformer\"},\"keywords\":[\"logging\",\"streams\"],\"bugs\":{\"url\":\"https://github.com/strongloop/strong-log-transformer/issues\"},\"homepage\":\"https://github.com/strongloop/strong-log-transformer\",\"directories\":{\"test\":\"test\"},\"bin\":{\"sl-log-transformer\":\"bin/sl-log-transformer.js\"},\"main\":\"index.js\",\"scripts\":{\"test\":\"tap --100 test/test-*\"},\"dependencies\":{\"duplexer\":\"^0.1.1\",\"minimist\":\"^1.2.0\",\"through\":\"^2.3.4\"},\"devDependencies\":{\"tap\":\"^12.0.1\"},\"engines\":{\"node\":\">=4\"}}");
 
 /***/ }),
 
